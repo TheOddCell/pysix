@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+import os
+import sys
+
+def disk_usage(path, follow_symlinks=False):
+    total = 0
+    if os.path.islink(path) and not follow_symlinks:
+        return os.lstat(path).st_blocks
+    if os.path.isfile(path):
+        return os.stat(path).st_blocks
+    for root, dirs, files in os.walk(path, followlinks=follow_symlinks):
+        for f in files:
+            fp = os.path.join(root, f)
+            try:
+                total += os.lstat(fp).st_blocks
+            except FileNotFoundError:
+                continue
+        for d in dirs:
+            dp = os.path.join(root, d)
+            try:
+                total += os.lstat(dp).st_blocks
+            except FileNotFoundError:
+                continue
+    total += os.lstat(path).st_blocks
+    return total
+
+files = sys.argv[1:] or ["."]
+for f in files:
+    print(f"{disk_usage(f)} {f}")

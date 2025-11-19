@@ -1,0 +1,41 @@
+#!/usr/bin/python3
+import sys
+
+args = sys.argv[1:]
+unbuffered = False
+files = []
+
+for arg in args:
+    if arg == '-u':
+        unbuffered = True
+    else:
+        files.append(arg)
+
+if not files:
+    files = ['-']
+
+for f in files:
+    try:
+        if f == '-':
+            data = bytearray()
+            while True:
+                try:
+                    b = sys.stdin.buffer.read(1)
+                    if not b:  # EOF
+                        break
+                    data += b
+                except KeyboardInterrupt:
+                    break
+            sys.stdout.buffer.write(data)
+            sys.stdout.buffer.flush()
+        else:
+            file = open(f, 'rb')
+            chunk = file.read()
+            sys.stdout.buffer.write(chunk)
+            sys.stdout.buffer.flush()
+            file.close()
+    except Exception as e:
+        print(f"cat: {f}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+sys.exit(0)

@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+import os, sys, shutil, stat
+
+argv = sys.argv[1:]
+interactive = False
+force = False
+
+# Parse options
+while argv and argv[0].startswith("-"):
+    opt = argv.pop(0)
+    if opt == "-i":
+        interactive = True
+        force = False
+    elif opt == "-f":
+        force = True
+        interactive = False
+    else:
+        sys.stderr.write("mv: invalid option: %s\n" % opt)
+        sys.exit(1)
+
+if len(argv) < 2:
+    sys.stderr.write("mv: missing operand\n")
+    sys.exit(1)
+
+srcs = argv[:-1]
+dst = argv[-1]
+
+
+def copy_then_remove(src, dst):
+    """Fallback for EXDEV: duplicate tree + metadata + remove original."""
+    if os.path.isdir(src) and not os.path.islink(src):
+        shutil.copytree(src, dst, symlinks=True)
+    else:
+        shutil.copy2(src, dst)
+    if os.path.isdir(src) and not os.path.islink(src):
+        shutil.rmtree(src)
+    else:
+        os.remove(src)
+
+
+# Determine if last operand is a directory
+dst_is_dir = os.path.isdir(dst)
+
+# If doing multiple sources, last operand MUST be a directory
+if len(srcs) > 1 and not dst_is_dir:
+    sys.stderr.write("mv: target '%s' is not a directory\n" % dst)
+    sys.exit(1)
+
+exit_status = 0
+
+for src in srcs:
+    if not os.path.exists(src):
+        sys.stderr.write("mv: cannot stat '%s': No such file or directory\n" % src)
+        exit_status = 1
+        continue
+
+    if dst_is_dir:
+        dest_path = os.path.join(dst, os.path.basename(src))
+    else:
+        dest_path = dst
+
+    # Self-move detection
+    try:
+        if os.path.samefile(src, dest_path):
+            continue
+    except FileNotFoundError:
+        pass
+
+    # Handle overwrite prompts
+    if os.path.exists(dest_path):
+        if not force:
+            ask = True
+            if interactive:
+                ask = True
+            elif os.access(dest_path, os.W_OK):
+                ask = False
+            else:
+                # unwritable + terminal → ask
+                ask = sys.stdin.isatty()
+
+            if ask:
+                sys.stderr.write("mv: overwrite '%s'? " % dest_path)
+                ans = sys.stdin.readline().lower().strip()
+                if not (ans == "y" or ans == "yes"):
+                    continue
+
+        # Remove old target
+        try:
+            if os.path.isdir(dest_path) and not os.path.islink(dest_path):
+                os.rmdir(dest_path)
+            else:
+                os.remove(dest_path)
+        except Exception as e:
+            sys.stderr.write("mv: cannot remove '%s': %s\n" % (dest_path, e))
+            exit_status = 1
+            continue
+
+    # Try simple rename() first
+    try:
+        os.rename(src, dest_path)
+        continue
+    except OSError as e:
+        # EXDEV → cross filesystem
+        if getattr(e, "errno", None) != getattr(os, "EXDEV", 18):
+            sys.stderr.write("mv: cannot move '%s': %s\n" % (src, e))
+            exit_status = 1
+            continue
+
+    # Cross-FS fallback
+    try:
+        copy_then_remove(src, dest_path)
+    except Exception as e:
+        sys.stderr.write("mv: error moving '%s': %s\n" % (src, e))
+        exit_status = 1
+
+sys.exit(exit_status)

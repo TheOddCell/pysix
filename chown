@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+import os
+import sys
+import pwd
+import grp
+
+# --- parse arguments ---
+args = sys.argv[1:]
+recursive = False
+follow_symlinks = True
+owner_group_str = None
+files = []
+
+i = 0
+while i < len(args):
+    a = args[i]
+    if a == "-R":
+        recursive = True
+    elif a == "-h":
+        follow_symlinks = False
+    elif a in ("-H", "-L", "-P"):
+        # For simplicity, only -P behavior is implemented fully; others behave as -L
+        follow_symlinks = a != "-P"
+    elif not owner_group_str:
+        owner_group_str = a
+    else:
+        files.append(a)
+    i += 1
+
+if not owner_group_str or not files:
+    print("Usage: chown [-R] [-h|-H|-L|-P] owner[:group] file...", file=sys.stderr)
+    sys.exit(1)
+
+# --- parse owner and optional group ---
+if ':' in owner_group_str:
+    owner_str, group_str = owner_group_str.split(':', 1)
+else:
+    owner_str, group_str = owner_group_str, None
+
+try:
+    uid = int(owner_str)
+except ValueError:
+    try:
+        uid = pwd.getpwnam(owner_str).pw_uid
+    except KeyError:
+        print(f"chown: invalid user '{owner_str}'", file=sys.stderr)
+        sys.exit(1)
+
+if group_str:
+    try:
+        gid = int(group_str)
+    except ValueError:
+        try:
+            gid = grp.getgrnam(group_str).gr_gid
+        except KeyError:
+            print(f"chown: invalid group '{group_str}'", file=sys.stderr)
+            sys.exit(1)
+else:
+    gid = -1  # don't change group if not specified
+
+# --- recursive processing ---
+def process_file(path):
+    try:
+        os.chown(path, uid, gid if gid != -1 else -1, follow_symlinks=follow_symlinks)
+        if recursive and os.path.isdir(path):
+            for entry in os.listdir(path):
+                child = os.path.join(path, entry)
+                process_file(child)
+    except Exception as e:
+        print(f"chown: cannot change ownership of '{path}': {e}", file=sys.stderr)
+
+# --- apply to files ---
+for f in files:
+    process_file(f)

@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+import sys
+import os
+
+args = sys.argv[1:]
+dirs = []
+mode = None
+parents = False
+
+i = 0
+while i < len(args):
+    arg = args[i]
+    if arg == '-p':
+        parents = True
+    elif arg == '-m':
+        i += 1
+        if i >= len(args):
+            print("mkdir: missing argument for -m", file=sys.stderr)
+            sys.exit(1)
+        try:
+            mode = int(args[i], 8)
+        except ValueError:
+            print(f"mkdir: invalid mode '{args[i]}'", file=sys.stderr)
+            sys.exit(1)
+    else:
+        dirs.append(arg)
+    i += 1
+
+if not dirs:
+    print("mkdir: missing operand", file=sys.stderr)
+    sys.exit(1)
+
+for d in dirs:
+    try:
+        if parents:
+            os.makedirs(d, exist_ok=True)
+        else:
+            os.mkdir(d)
+        if mode is not None:
+            os.chmod(d, mode)
+    except Exception as e:
+        print(f"mkdir: {d}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+sys.exit(0)

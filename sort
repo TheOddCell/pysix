@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+import sys
+
+args = sys.argv[1:]
+
+# --- defaults ---
+files = []
+outfile = None
+reverse = False
+unique = False
+ignore_blanks = False
+numeric = False
+field_start = None
+field_end = None
+delimiter = None
+
+# --- parse args ---
+i = 0
+while i < len(args):
+    a = args[i]
+    if a == "-r":
+        reverse = True
+    elif a == "-u":
+        unique = True
+    elif a == "-b":
+        ignore_blanks = True
+    elif a == "-n":
+        numeric = True
+    elif a == "-o":
+        i += 1
+        outfile = args[i]
+    elif a == "-t":
+        i += 1
+        delimiter = args[i]
+    elif a.startswith("-k"):
+        # simple parse: -k start[,end], fields are 1-based
+        kdef = a[2:]
+        if ',' in kdef:
+            fs, fe = kdef.split(',', 1)
+            field_start = int(fs.split('.')[0])
+            field_end = int(fe.split('.')[0])
+        else:
+            field_start = int(kdef.split('.')[0])
+            field_end = None
+    else:
+        files.append(a)
+    i += 1
+
+if not files:
+    files = ["-"]
+
+# --- read lines ---
+lines = []
+for f in files:
+    if f == "-":
+        lines.extend([line.rstrip('\n') for line in sys.stdin])
+    else:
+        with open(f, 'r', errors='replace') as fp:
+            lines.extend([line.rstrip('\n') for line in fp])
+
+# --- key function ---
+def sort_key(line):
+    l = line
+    # select fields if -k is used
+    if field_start is not None:
+        fields = l.split(delimiter) if delimiter else l.split()
+        fs = field_start-1
+        fe = field_end-1 if field_end else len(fields)-1
+        l = delimiter.join(fields[fs:fe+1]) if fs < len(fields) else ""
+    if ignore_blanks:
+        l = l.lstrip()
+    if numeric:
+        try:
+            return float(l)
+        except:
+            return 0
+    return l
+
+# --- sort ---
+lines.sort(key=sort_key, reverse=reverse)
+
+# --- unique ---
+if unique:
+    seen = set()
+    outlines = []
+    for line in lines:
+        if line not in seen:
+            outlines.append(line)
+            seen.add(line)
+    lines = outlines
+
+# --- write output ---
+outf = open(outfile, 'w') if outfile else sys.stdout
+for line in lines:
+    print(line, file=outf)
+if outfile:
+    outf.close()

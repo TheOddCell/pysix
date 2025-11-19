@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+import sys
+import os
+
+args = sys.argv[1:]
+suffix = None
+path = None
+
+if not args:
+    print("basename: missing operand", file=sys.stderr)
+    sys.exit(1)
+
+path = args[0]
+if len(args) > 1:
+    suffix = args[1]
+
+name = os.path.basename(path)
+if suffix and name.endswith(suffix):
+    name = name[:-len(suffix)]
+
+print(name)
+sys.exit(0)

@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+import sys
+
+def usage():
+    print("usage: tail [-n number] [file]", file=sys.stderr)
+    sys.exit(1)
+
+def parse_args(argv):
+    n = 10
+    file = None
+    i = 1
+
+    while i < len(argv):
+        arg = argv[i]
+
+        if arg == "-n":
+            i += 1
+            if i >= len(argv):
+                usage()
+            try:
+                n = int(argv[i])
+            except ValueError:
+                usage()
+        elif arg.startswith("-n"):
+            # POSIX allows -nNUMBER
+            try:
+                n = int(arg[2:])
+            except ValueError:
+                usage()
+        elif arg == "--":
+            i += 1
+            if i < len(argv):
+                file = argv[i]
+            break
+        elif arg.startswith("-"):
+            usage()
+        else:
+            file = arg
+        i += 1
+
+    return n, file
+
+def tail_lines(stream, n):
+    # POSIX allows buffering; minimal implementation can store everything
+    lines = stream.readlines()
+    if n >= 0:
+        start = max(0, len(lines) - n)
+        for line in lines[start:]:
+            sys.stdout.write(line)
+    else:
+        # -n +NUMBER means count from start
+        # origin is 1 → "+1" = first line
+        idx = (-n) - 1
+        if idx < 0:
+            idx = 0
+        for line in lines[idx:]:
+            sys.stdout.write(line)
+
+def main():
+    n, file = parse_args(sys.argv)
+
+    if file is None or file == "-":
+        tail_lines(sys.stdin, n)
+    else:
+        try:
+            with open(file, "r", encoding="utf-8", errors="surrogateescape") as f:
+                tail_lines(f, n)
+        except OSError as e:
+            print(f"tail: {e}", file=sys.stderr)
+            sys.exit(1)
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+import sys
+import os
+
+def usage():
+    print("usage: wc [-c|-m] [-lw] [file...]", file=sys.stderr)
+    sys.exit(1)
+
+def parse_args(argv):
+    show_l = False
+    show_w = False
+    show_c = False
+    show_m = False
+
+    files = []
+
+    i = 1
+    while i < len(argv):
+        arg = argv[i]
+
+        if arg == "-l":
+            show_l = True
+        elif arg == "-w":
+            show_w = True
+        elif arg == "-c":
+            show_c = True
+        elif arg == "-m":
+            show_m = True
+        elif arg == "--":
+            files.extend(argv[i+1:])
+            break
+        elif arg.startswith("-") and arg != "-":
+            usage()
+        else:
+            files.append(arg)
+        i += 1
+
+    # POSIX: if ANY option is specified, only print fields enabled by options
+    # if NO option is specified → default: -l -w -c
+    if not (show_l or show_w or show_c or show_m):
+        show_l = True
+        show_w = True
+        show_c = True
+
+    # POSIX: -c and -m cannot both be active
+    if show_c and show_m:
+        usage()
+
+    return show_l, show_w, show_c, show_m, files
+
+def count_stream(stream, count_chars):
+    newlines = 0
+    words = 0
+    bytes_ = 0
+    chars = 0
+
+    data = stream.read()
+
+    bytes_ = len(data.encode("utf-8", errors="surrogateescape"))
+
+    for ch in data:
+        if ch == "\n":
+            newlines += 1
+        if count_chars:
+            chars += 1
+
+    # word count uses locale-aware whitespace: Python str.isspace()
+    in_word = False
+    for ch in data:
+        if ch.isspace():
+            if in_word:
+                words += 1
+            in_word = False
+        else:
+            in_word = True
+
+    if in_word:
+        words += 1
+
+    return newlines, words, bytes_, chars
+
+def print_line(show_l, show_w, show_c, show_m, counts, name=None):
+    newlines, words, bytes_, chars = counts
+
+    fields = []
+    if show_l:
+        fields.append(str(newlines))
+    if show_w:
+        fields.append(str(words))
+    if show_c:
+        fields.append(str(bytes_))
+    if show_m:
+        fields.append(str(chars))
+
+    if name is not None:
+        fields.append(name)
+
+    print(" ".join(fields))
+
+def wc_file(path, show_l, show_w, show_c, show_m):
+    try:
+        if path == "-":
+            return count_stream(sys.stdin, show_m)
+        with open(path, "r", encoding="utf-8", errors="surrogateescape") as f:
+            return count_stream(f, show_m)
+    except OSError as e:
+        print(f"wc: {e}", file=sys.stderr)
+        return None
+
+def main():
+    show_l, show_w, show_c, show_m, files = parse_args(sys.argv)
+
+    if not files:
+        counts = count_stream(sys.stdin, show_m)
+        print_line(show_l, show_w, show_c, show_m, counts)
+        return
+
+    totals = [0, 0, 0, 0]
+    multiple = len(files) > 1
+
+    for f in files:
+        counts = wc_file(f, show_l, show_w, show_c, show_m)
+        if counts is None:
+            continue
+        print_line(show_l, show_w, show_c, show_m, counts, f)
+
+        for i in range(4):
+            totals[i] += counts[i]
+
+    if multiple:
+        print_line(show_l, show_w, show_c, show_m, totals, "total")
+
+if __name__ == "__main__":
+    main()

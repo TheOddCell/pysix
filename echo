@@ -1,0 +1,64 @@
+#!/usr/bin/python3
+import sys
+import re
+
+escapes = {
+    'a': '\a',
+    'b': '\b',
+    'c': None,   # special: suppress rest of output
+    'f': '\f',
+    'n': '\n',
+    'r': '\r',
+    't': '\t',
+    'v': '\v',
+    '\\': '\\'
+}
+
+def interpret_escapes(s):
+    result = []
+    i = 0
+    while i < len(s):
+        if s[i] == '\\':
+            i += 1
+            if i < len(s):
+                if s[i] in escapes:
+                    if s[i] == 'c':
+                        return ''.join(result), True
+                    result.append(escapes[s[i]])
+                elif s[i] == '0':
+                    # octal \0nnn
+                    oct_match = re.match(r'[0-7]{1,3}', s[i+1:])
+                    if oct_match:
+                        val = int(oct_match.group(0), 8)
+                        result.append(chr(val))
+                        i += len(oct_match.group(0))
+                    else:
+                        result.append('\0')
+                else:
+                    result.append(s[i])
+        else:
+            result.append(s[i])
+        i += 1
+    return ''.join(result), False
+
+def main():
+    try:
+        args = sys.argv[1:]
+        output = []
+        suppress_newline = False
+        for arg in args:
+            interpreted, stop = interpret_escapes(arg)
+            output.append(interpreted)
+            if stop:
+                suppress_newline = True
+                break
+        out_str = " ".join(output)
+        if not suppress_newline:
+            out_str += '\n'
+        sys.stdout.write(out_str)
+        sys.exit(0)
+    except Exception as e:
+        print(f"echo: {e}", file=sys.stderr)
+        sys.exit(1)
+
+main()

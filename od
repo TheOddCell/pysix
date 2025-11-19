@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+import sys
+import argparse
+import struct
+import os
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Python version of od")
+    parser.add_argument("file", nargs="?", type=str, default="-", help="File to read ('-' for stdin)")
+    parser.add_argument("-A", "--address_base", choices=["d", "o", "x", "n"], default="o", help="Offset base")
+    parser.add_argument("-j", "--skip", type=str, default="0", help="Skip first N bytes")
+    parser.add_argument("-N", "--count", type=str, default=None, help="Maximum number of bytes to read")
+    parser.add_argument("-t", "--types", action="append", default=[], help="Output types: a, c, d, o, u, x")
+    parser.add_argument("-v", "--all", action="store_true", help="Do not compress repeated lines")
+    return parser.parse_args()
+
+def parse_number(s):
+    # Parse decimal, octal (leading 0), hex (0x), or multipliers (b=512, k=1024, m=1048576)
+    mul = 1
+    if s[-1] in "bkm":
+        if s[-1] == "b":
+            mul = 512
+        elif s[-1] == "k":
+            mul = 1024
+        elif s[-1] == "m":
+            mul = 1048576
+        s = s[:-1]
+    if s.startswith("0x") or s.startswith("0X"):
+        return int(s, 16) * mul
+    elif s.startswith("0") and s != "0":
+        return int(s, 8) * mul
+    else:
+        return int(s) * mul
+
+def format_byte(b, fmt, typesize=1):
+    if fmt == 'a':  # Named ASCII
+        names = {
+            0: "nul", 1: "soh", 2: "stx", 3: "etx", 4: "eot", 5: "enq", 6: "ack", 7: "bel",
+            8: "bs", 9: "ht", 10: "nl", 11: "vt", 12: "ff", 13: "cr", 14: "so", 15: "si",
+            16: "dle", 17: "dc1", 18: "dc2", 19: "dc3", 20: "dc4", 21: "nak", 22: "syn", 23: "etb",
+            24: "can", 25: "em", 26: "sub", 27: "esc", 28: "fs", 29: "gs", 30: "rs", 31: "us",
+            32: "sp", 127: "del"
+        }
+        return names.get(b, chr(b))
+    elif fmt == 'c':
+        if 32 <= b <= 126:
+            return chr(b)
+        escapes = {0: r'\0', 7: r'\a', 8: r'\b', 9: r'\t', 10: r'\n', 11: r'\v', 12: r'\f', 13: r'\r', 92: r'\\'}
+        return escapes.get(b, f"{b:03o}")
+    elif fmt == 'd':
+        return str(int.from_bytes(b, byteorder='little', signed=True))
+    elif fmt == 'u':
+        return str(int.from_bytes(b, byteorder='little', signed=False))
+    elif fmt == 'o':
+        return oct(int.from_bytes(b, byteorder='little', signed=False))[2:]
+    elif fmt == 'x':
+        return hex(int.from_bytes(b, byteorder='little', signed=False))[2:]
+    else:
+        return str(b)
+
+def main():
+    args = parse_args()
+
+    skip = parse_number(args.skip)
+    count = parse_number(args.count) if args.count else None
+    types = args.types if args.types else ['o']  # default output type
+
+    if args.file == "-":
+        f = sys.stdin.buffer
+    else:
+        f = open(args.file, "rb")
+
+    f.seek(skip)
+    data = f.read(count)
+    if args.file != "-":
+        f.close()
+
+    offset = 0
+    line_size = 16
+
+    last_line = None
+    for i in range(0, len(data), line_size):
+        chunk = data[i:i+line_size]
+        line = []
+
+        for t in types:
+            if t in 'adcuox':
+                for b in chunk:
+                    line.append(format_byte(b, t))
+            else:
+                line.append(str(chunk))
+
+        if not args.all and line == last_line:
+            print("*")
+            continue
+        last_line = line
+
+        # Offset
+        if args.address_base != 'n':
+            if args.address_base == 'd':
+                off_str = f"{offset:07d}"
+            elif args.address_base == 'o':
+                off_str = f"{offset:07o}"
+            elif args.address_base == 'x':
+                off_str = f"{offset:07x}"
+            print(off_str, end=' ')
+        print(' '.join(line))
+        offset += len(chunk)
+
+    # Final offset
+    if args.address_base != 'n':
+        if args.address_base == 'd':
+            print(f"{offset:07d}")
+        elif args.address_base == 'o':
+            print(f"{offset:07o}")
+        elif args.address_base == 'x':
+            print(f"{offset:07x}")
+
+if __name__ == "__main__":
+    main()

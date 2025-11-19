@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+import sys
+import re
+from pathlib import Path
+
+# --- parse arguments ---
+args = sys.argv[1:]
+patterns = []
+pattern_files = []
+files = []
+
+use_extended = False
+fixed_strings = False
+ignore_case = False
+invert = False
+full_line = False
+count_only = False
+list_files = False
+show_line_num = False
+quiet = False
+suppress_errors = False
+
+i = 0
+while i < len(args):
+    a = args[i]
+    if a == "-E": use_extended = True
+    elif a == "-F": fixed_strings = True
+    elif a == "-i": ignore_case = True
+    elif a == "-v": invert = True
+    elif a == "-x": full_line = True
+    elif a == "-c": count_only = True
+    elif a == "-l": list_files = True
+    elif a == "-n": show_line_num = True
+    elif a == "-q": quiet = True
+    elif a == "-s": suppress_errors = True
+    elif a == "-e":
+        i += 1
+        patterns.append(args[i])
+    elif a == "-f":
+        i += 1
+        pattern_files.append(args[i])
+    else:
+        files.append(a)
+    i += 1
+
+# --- read pattern files ---
+for pf in pattern_files:
+    try:
+        with open(pf, "r", errors="replace") as f:
+            patterns.extend(line.rstrip("\n") for line in f)
+    except Exception:
+        if not suppress_errors:
+            print(f"grep: {pf}: cannot read file", file=sys.stderr)
+        continue
+
+# --- prepare regex ---
+flags = re.MULTILINE
+if ignore_case: flags |= re.IGNORECASE
+
+regexes = []
+for p in patterns:
+    if fixed_strings:
+        p = re.escape(p)
+    if full_line:
+        p = f"^{p}$"
+    regexes.append(re.compile(p, flags))
+
+def match(line):
+    found = any(r.search(line) for r in regexes)
+    return not found if invert else found
+
+# --- read input ---
+if not files: files = ["-"]
+
+exit_status = 1
+
+for f in files:
+    if f == "-":
+        lines = [line.rstrip("\n") for line in sys.stdin]
+        filename = "(standard input)"
+    else:
+        try:
+            with open(f, "r", errors="replace") as file_obj:
+                lines = [line.rstrip("\n") for line in file_obj]
+            filename = f
+        except Exception:
+            if not suppress_errors:
+                print(f"grep: {f}: cannot read file", file=sys.stderr)
+            continue
+
+    match_count = 0
+    for idx, line in enumerate(lines, start=1):
+        if match(line):
+            match_count += 1
+            exit_status = 0
+            if quiet:
+                sys.exit(0)
+            if not count_only and not list_files:
+                prefix = ""
+                if len(files) > 1:
+                    prefix += f"{filename}:"
+                if show_line_num:
+                    prefix += f"{idx}:"
+                print(f"{prefix}{line}")
+
+    if count_only:
+        prefix = f"{filename}:" if len(files) > 1 else ""
+        print(f"{prefix}{match_count}")
+    if list_files and match_count > 0:
+        print(filename)
+
+sys.exit(exit_status)

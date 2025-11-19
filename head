@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+import sys
+import os
+
+args = sys.argv[1:]
+count = None
+mode = "lines"   # "lines" or "bytes"
+files = []
+
+# ---- Parse options ----
+i = 0
+while i < len(args):
+    arg = args[i]
+    if arg == "-n" or arg == "-c":
+        if i + 1 >= len(args):
+            sys.stderr.write(f"head: option requires an argument -- {arg}\n")
+            sys.exit(1)
+        try:
+            num = int(args[i+1])
+            if num <= 0:
+                raise ValueError
+        except ValueError:
+            sys.stderr.write(f"head: invalid number: {args[i+1]}\n")
+            sys.exit(1)
+        count = num
+        mode = "bytes" if arg == "-c" else "lines"
+        i += 2
+    elif arg == "--":
+        files.extend(args[i+1:])
+        break
+    elif arg.startswith("-"):
+        sys.stderr.write(f"head: invalid option -- {arg}\n")
+        sys.exit(1)
+    else:
+        files.append(arg)
+        i += 1
+
+# Default count: 10 lines
+if count is None:
+    count = 10
+    mode = "lines"
+
+# If no files: read stdin
+if not files:
+    files = ["-"]
+
+multiple = len(files) > 1
+first = True
+
+def print_header(name):
+    nonlocal first
+    if not multiple:
+        return
+    if not first:
+        sys.stdout.write("\n")
+    first = False
+    sys.stdout.write(f"==> {name} <==\n")
+
+# ---- Process files ----
+for f in files:
+    # open file or stdin
+    if f == "-":
+        fp = sys.stdin.buffer
+        name = "standard input"
+    else:
+        try:
+            fp = open(f, "rb")
+        except Exception as e:
+            sys.stderr.write(f"head: {f}: {e}\n")
+            continue
+        name = f
+
+    print_header(name)
+
+    if mode == "bytes":
+        # copy first count bytes
+        remaining = count
+        while remaining > 0:
+            chunk = fp.read(min(4096, remaining))
+            if not chunk:
+                break
+            sys.stdout.buffer.write(chunk)
+            remaining -= len(chunk)
+
+    else:
+        # copy first count lines
+        # read binary, split on b'\n'
+        lines = 0
+        for line in fp:
+            sys.stdout.buffer.write(line)
+            lines += 1
+            if lines >= count:
+                break
+
+    if f != "-":
+        fp.close()

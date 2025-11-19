@@ -1,0 +1,81 @@
+#!/usr/bin/python3
+import os
+import sys
+import pwd
+import grp
+
+def get_ids(user=None):
+    # If no user specified, use current process
+    if user is None:
+        pw = pwd.getpwuid(os.getuid())
+        uid, euid = os.getuid(), os.geteuid()
+        gid, egid = os.getgid(), os.getegid()
+        groups = os.getgroups()
+    else:
+        try:
+            pw = pwd.getpwnam(user)
+            uid = euid = pw.pw_uid
+            gid = egid = pw.pw_gid
+            groups = [g.gr_gid for g in grp.getgrall() if user in g.gr_mem]
+            if gid not in groups:
+                groups.insert(0, gid)
+        except KeyError:
+            print(f"id: {user}: no such user", file=sys.stderr)
+            sys.exit(1)
+    return uid, euid, gid, egid, groups, pw.pw_name
+
+def print_id(args):
+    uid, euid, gid, egid, groups, uname = get_ids(args[-1] if args else None)
+    numeric = True
+    show_real = False
+    mode = "default"
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "-u":
+            mode = "u"
+        elif arg == "-g":
+            mode = "g"
+        elif arg == "-G":
+            mode = "G"
+        elif arg == "-n":
+            numeric = False
+        elif arg == "-r":
+            show_real = True
+        else:
+            # Assume it's user operand
+            pass
+        i += 1
+
+    if mode == "u":
+        id_val = uid if not show_real else os.getuid()
+        print(id_val if numeric else uname)
+    elif mode == "g":
+        id_val = gid if not show_real else os.getgid()
+        print(id_val if numeric else grp.getgrgid(id_val).gr_name)
+    elif mode == "G":
+        out = []
+        for g in groups:
+            out.append(str(g) if numeric else grp.getgrgid(g).gr_name)
+        print(" ".join(out))
+    else:  # default
+        out = f"uid={uid}({uname}) gid={gid}({grp.getgrgid(gid).gr_name})"
+        if euid != uid:
+            out += f" euid={euid}({pwd.getpwuid(euid).pw_name})"
+        if egid != gid:
+            out += f" egid={egid}({grp.getgrgid(egid).gr_name})"
+        if groups:
+            group_str = []
+            for g in groups:
+                group_str.append(f"{g}({grp.getgrgid(g).gr_name})")
+            out += f" groups={','.join(group_str)}"
+        print(out)
+
+try:
+    print_id(sys.argv[1:])
+    sys.exit(0)
+except Exception as e:
+    print(f"id: {e}", file=sys.stderr)
+    sys.exit(1)
+

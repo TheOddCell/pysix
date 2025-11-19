@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+import os
+import stat
+import sys
+
+# --- parse arguments ---
+args = sys.argv[1:]
+recursive = False
+mode_str = None
+files = []
+
+i = 0
+while i < len(args):
+    a = args[i]
+    if a == "-R":
+        recursive = True
+    elif not mode_str:
+        mode_str = a
+    else:
+        files.append(a)
+    i += 1
+
+if not mode_str or not files:
+    print("Usage: chmod [-R] mode file...", file=sys.stderr)
+    sys.exit(1)
+
+umask = os.umask(0)
+os.umask(umask)  # restore
+
+# --- helper functions ---
+def apply_symbolic(mode, clause, is_dir):
+    """
+    Apply a single symbolic clause to mode.
+    clause example: u+rwx, g-w, o=x, a+rw
+    """
+    who_map = {'u': stat.S_IRUSR|stat.S_IWUSR|stat.S_IXUSR,
+               'g': stat.S_IRGRP|stat.S_IWGRP|stat.S_IXGRP,
+               'o': stat.S_IROTH|stat.S_IWOTH|stat.S_IXOTH,
+               'a': stat.S_IRUSR|stat.S_IWUSR|stat.S_IXUSR |
+                    stat.S_IRGRP|stat.S_IWGRP|stat.S_IXGRP |
+                    stat.S_IROTH|stat.S_IWOTH|stat.S_IXOTH}
+    
+    perms_map = {'r': stat.S_IRUSR|stat.S_IRGRP|stat.S_IROTH,
+                 'w': stat.S_IWUSR|stat.S_IWGRP|stat.S_IWOTH,
+                 'x': stat.S_IXUSR|stat.S_IXGRP|stat.S_IXOTH,
+                 's': stat.S_ISUID|stat.S_ISGID,
+                 't': stat.S_ISVTX}
+
+    # split who/op/perms
+    import re
+    m = re.match(r'([ugoa]*)([+=-])([rwxXstugo]*)', clause)
+    if not m:
+        return mode  # invalid, ignore
+    who, op, perms = m.groups()
+    who = who if who else 'a'
+
+    perm_bits = 0
+    for p in perms:
+        if p in 'rwxst':
+            perm_bits |= perms_map[p]
+        elif p in 'ugo':  # permcopy not implemented fully
+            perm_bits |= mode & who_map[p]
+
+    who_bits = 0
+    for w in who:
+        who_bits |= who_map[w]
+
+    if op == '+':
+        mode |= perm_bits & who_bits
+    elif op == '-':
+        mode &= ~(perm_bits & who_bits)
+    elif op == '=':
+        mode &= ~who_bits
+        mode |= perm_bits & who_bits
+    return mode
+
+def process_file(path, mode, recursive):
+    try:
+        st = os.stat(path)
+        if isinstance(mode, int):
+            new_mode = mode
+        else:
+            new_mode = st.st_mode
+            for clause in mode.split(','):
+                new_mode = apply_symbolic(new_mode, clause, stat.S_ISDIR(st.st_mode))
+        os.chmod(path, new_mode)
+        if recursive and stat.S_ISDIR(st.st_mode):
+            for entry in os.listdir(path):
+                child = os.path.join(path, entry)
+                process_file(child, mode, recursive)
+    except Exception as e:
+        print(f"chmod: cannot change mode of '{path}': {e}", file=sys.stderr)
+
+# --- handle octal vs symbolic ---
+try:
+    if mode_str.startswith(('0o','0O')):
+        mode_val = int(mode_str, 8)
+    elif mode_str.isdigit():
+        mode_val = int(mode_str, 8)
+    else:
+        mode_val = mode_str  # symbolic
+except ValueError:
+    print(f"chmod: invalid mode '{mode_str}'", file=sys.stderr)
+    sys.exit(1)
+
+# --- apply to files ---
+for f in files:
+    process_file(f, mode_val, recursive)

@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+import sys
+
+args = sys.argv[1:]
+
+input_file = None
+output_file = None
+count_lines = False
+only_repeats = False
+only_unique = False
+skip_fields = 0
+skip_chars = 0
+
+# --- parse args ---
+i = 0
+while i < len(args):
+    a = args[i]
+    if a == "-c":
+        count_lines = True
+    elif a == "-d":
+        only_repeats = True
+    elif a == "-u":
+        only_unique = True
+    elif a == "-f":
+        i += 1
+        skip_fields = int(args[i])
+    elif a == "-s":
+        i += 1
+        skip_chars = int(args[i])
+    elif not input_file:
+        input_file = a
+    else:
+        output_file = a
+    i += 1
+
+# --- read lines ---
+if not input_file or input_file == "-":
+    lines = [line.rstrip("\n") for line in sys.stdin]
+else:
+    with open(input_file, "r", errors="replace") as f:
+        lines = [line.rstrip("\n") for line in f]
+
+# --- helper to normalize for comparison ---
+def norm(line):
+    parts = line.split()
+    # skip fields
+    if skip_fields:
+        parts = parts[skip_fields:]
+    l = " ".join(parts)
+    # skip characters
+    if skip_chars:
+        l = l[skip_chars:]
+    return l
+
+# --- process lines ---
+out_lines = []
+prev = None
+count = 0
+
+for line in lines + [None]:  # sentinel
+    if prev is None:
+        prev = line
+        count = 1
+        continue
+    if line is not None and norm(line) == norm(prev):
+        count += 1
+    else:
+        if (only_repeats and count > 1) or (only_unique and count == 1) or (not only_repeats and not only_unique):
+            out_lines.append((count, prev))
+        prev = line
+        count = 1
+
+# --- write output ---
+outf = open(output_file, "w") if output_file else sys.stdout
+for c, l in out_lines:
+    if l is None:
+        continue
+    if count_lines:
+        print(f"{c} {l}", file=outf)
+    else:
+        print(l, file=outf)
+if output_file:
+    outf.close()

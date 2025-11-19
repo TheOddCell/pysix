@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+import sys
+import os
+
+args = sys.argv[1:]
+
+if not args:
+    print("dirname: missing operand", file=sys.stderr)
+    sys.exit(1)
+
+path = args[0]
+
+# POSIX dirname rules:
+# 1. If path has no / → print "."
+# 2. Otherwise strip trailing slashes
+# 3. Remove last component
+# 4. If result is empty → print "/"
+
+# 1. If no slash at all
+if '/' not in path:
+    print(".")
+    sys.exit(0)
+
+# 2. Strip trailing slashes (but not if path is just "/")
+p = path.rstrip('/')
+if p == "":
+    print("/")
+    sys.exit(0)
+
+# 3. Split at last slash
+slash_index = p.rfind('/')
+
+# If slash is at start → dirname is "/"
+if slash_index == 0:
+    print("/")
+    sys.exit(0)
+
+# 4. Otherwise take everything before slash
+result = p[:slash_index]
+
+print(result)
+sys.exit(0)

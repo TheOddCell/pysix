@@ -27,6 +27,7 @@ cp -r "$PYPY_SRC"/* "$CHROOT_DIR/"
 
 mkdir -p "$CHROOT_DIR/bin"
 mkdir -p "$CHROOT_DIR/lib"
+mkdir -p "$CHROOT_DIR/usr"
 mkdir -p "$CHROOT_DIR/sbin"
 
 echo "[*] Copying requested binaries into chroot..."
@@ -52,9 +53,16 @@ for bin in $BINS; do
     done
 done
 
-echo "[*] Creating symlinks (sbin → bin, usr → /)..."
+echo "[*] Creating symlinks..."
+echo "  sbin → bin"
 ln -sf bin "$CHROOT_DIR/sbin"
-ln -sf . "$CHROOT_DIR/usr"
+
+echo "  /usr/bin → ../bin"
+mkdir -p "$CHROOT_DIR/usr"
+ln -sf ../bin "$CHROOT_DIR/usr/bin"
+
+echo "  /usr/sbin → ../bin"
+ln -sf ../bin "$CHROOT_DIR/usr/sbin"
 
 echo "[*] Creating /etc with minimal os-release..."
 mkdir -p "$CHROOT_DIR/etc"

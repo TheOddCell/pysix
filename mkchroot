@@ -1,0 +1,81 @@
+#!/bin/bash
+set -e
+
+# Hardcoded paths
+PYPY_SRC="../pypy"
+CHROOT_DIR="mkchroot.d"
+
+# List of extra binaries to copy from current directory
+BINARIES=(
+    ":" df ls rmdir
+    basename dirname sh
+    cat du sleep
+    chgrp echo mkdir sort
+    chmod false mv tail
+    chown grep od touch
+    clear head pwd true
+    cp id readlink uniq
+    cut wc env
+)
+
+echo "[*] Creating chroot at $CHROOT_DIR..."
+rm -rf "$CHROOT_DIR"
+mkdir -p "$CHROOT_DIR"
+
+echo "[*] Copying PyPy source from $PYPY_SRC..."
+cp -r "$PYPY_SRC"/* "$CHROOT_DIR/"
+
+mkdir -p "$CHROOT_DIR/bin"
+mkdir -p "$CHROOT_DIR/lib"
+mkdir -p "$CHROOT_DIR/sbin"
+
+echo "[*] Copying requested binaries into chroot..."
+for b in "${BINARIES[@]}"; do
+    if [[ -f "$PWD/$b" ]]; then
+        echo "  + $b"
+        cp "$PWD/$b" "$CHROOT_DIR/bin/"
+    else
+        echo "  ! WARNING: $b not found in current directory"
+    fi
+done
+
+echo "[*] Scanning PyPy binaries for shared libraries..."
+BINS=$(find "$CHROOT_DIR/bin" -type f -executable)
+
+for bin in $BINS; do
+    echo "  → ldd on $bin"
+    ldd "$bin" 2>/dev/null | awk '/=>/ {print $3} /ld-linux/ {print $1}' | while read lib; do
+        if [[ -f "$lib" ]]; then
+            echo "    copying $lib"
+            cp --parents "$lib" "$CHROOT_DIR"
+        fi
+    done
+done
+
+echo "[*] Creating symlinks (sbin → bin, usr → /)..."
+ln -sf bin "$CHROOT_DIR/sbin"
+ln -sf . "$CHROOT_DIR/usr"
+
+echo "[*] Creating /etc with minimal os-release..."
+mkdir -p "$CHROOT_DIR/etc"
+cat > "$CHROOT_DIR/etc/os-release" <<EOF
+NAME="PyPyChroot"
+PRETTY_NAME="PyPy Minimal Chroot"
+EOF
+
+echo "[*] Creating /bin/python symlink → /bin/pypy..."
+if [[ -f "$CHROOT_DIR/bin/pypy" ]]; then
+    ln -sf pypy "$CHROOT_DIR/bin/python"
+else
+    echo "ERROR: $CHROOT_DIR/bin/pypy does not exist"
+    exit 1
+fi
+
+echo
+echo "=============================================================="
+echo " Chroot built successfully!"
+echo " Enter with:"
+echo "   sudo chroot $CHROOT_DIR /bin/pypy"
+echo " or:"
+echo "   sudo chroot $CHROOT_DIR /bin/python"
+echo "=============================================================="

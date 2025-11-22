@@ -1,12 +1,14 @@
 #!/bin/sh
 # NOT a coreutil
-# Requires a pypy binary either static or that uses https://files.obsidianos.xyz/~odd/pypy.sh
+# Requires a pypy binary either static or that uses https://files.obsidianos.xyz/~odd/pypy.sh in ..
+# Also requires a fusermount in ..
 
 set -euo pipefail
 mkdir -p mkchroot.d
 cd mkchroot.d
 mkdir -p bin etc root sys proc dev run tmp
 ln -sf "$PWD/bin" "$PWD/sbin"
+ln -sf "$PWD/" "$PWD/usr"
 cp ../: ../chgrp ../clear ../df ../echo ../head ../ls ../od ../sleep ../touch ../wc \
  ../basename ../chmod ../cp ../dirname ../false ../id ../mkdir ../pwd ../rmdir ../sort ../true \
 ../cat ../chown ../cut ../du ../grep ../mv ../readlink ../sh ../tail ../uniq bin
@@ -15,6 +17,7 @@ NAME="mkchroot"
 PRETTY_NAME="Pysix mkchroot"
 EOF
 cp ../../pypy bin
+cp ../../fusermount bin
 cat>"$PWD/etc/passwd"<<EOF
 root:x:0:0::/root:/bin/sh
 EOF
